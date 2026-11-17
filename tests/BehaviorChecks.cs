@@ -80,7 +80,10 @@ public class BehaviorChecks
             Call(bubble, "OnMouseMove", bubble, new MouseEventArgs(MouseButtons.Left,1,20,20,0));
             Call(bubble, "OnMouseUp", bubble, new MouseEventArgs(MouseButtons.Left,1,20,20,0));
             Check(bubble.Left - dragBubbleStart.X == -60 && bubble.Top - dragBubbleStart.Y == -40, "bubble follows the drag");
-            Check(claude.Left - dragChatStart.X == -60 && claude.Top - dragChatStart.Y == -40, "open chat moves together with the bubble");
+            Type geomCalc = app.GetType("MuseBubbleWin.WindowGeometry", true);
+            Rectangle dragTarget = new Rectangle(dragChatStart.X - 60, dragChatStart.Y - 40, claude.Width, claude.Height);
+            Rectangle dragExpected = (Rectangle)geomCalc.GetMethod("Clamp").Invoke(null, new object[]{ dragTarget, Screen.FromRectangle(dragTarget).WorkingArea });
+            Check(claude.Location == dragExpected.Location, "open chat moves together with the bubble");
             Call(bubble, "HideChat");
             Call(bubble, "SetChatSize", 600, 720);
             Check(claude.Width == Math.Max(Math.Min(600,work.Width), claude.MinimumSize.Width) && claude.Height == Math.Min(720,work.Height), "size preset resizes selected window");
