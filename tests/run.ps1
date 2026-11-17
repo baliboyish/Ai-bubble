@@ -11,5 +11,5 @@ if($LASTEXITCODE -ne 0){throw 'Behavior test compilation failed.'}
 $process=Start-Process -FilePath (Join-Path $output 'BehaviorChecks.exe') -WorkingDirectory $output -WindowStyle Hidden -PassThru
 if(!$process.WaitForExit(45000)){$process.Kill();throw 'Behavior checks timed out.'}
 $results=Get-Content -LiteralPath (Join-Path $output 'test-results.txt') -Raw
-if($process.ExitCode -ne 0 -or $results -notmatch '^PASS 36 behavioral assertions'){throw $results}
+if($process.ExitCode -ne 0 -or $results -notmatch '^PASS 40 behavioral assertions'){throw $results}
 Write-Output $results.Trim()

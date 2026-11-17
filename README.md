@@ -128,7 +128,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contributions and release versioning.
 
 ## Verification and limitations
 
-The local Windows build passed **36 behavior/layout assertions**, covering click versus drag, switching, retained windows, saved preferences, screen bounds, 8-pixel positioning, resizing, pinning and light/dark layout at several scales. The maintainer also confirmed interactive login to all three services.
+The local Windows build passed **40 behavior/layout assertions**, covering click versus drag, bubble-click toggle, grouped dragging, switching, retained windows, saved preferences, screen bounds, 8-pixel positioning, resizing, pinning and light/dark layout at several scales. The maintainer also confirmed interactive login to all three services.
 
 CI does not sign in, send messages, or verify account-specific uploads and voice. Websites own their content and layout, and service changes may affect embedded login or small-window behavior. Use the browser fallback when needed. Builds are unsigned; review any security detection rather than disabling protection.
 
