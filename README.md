@@ -25,6 +25,11 @@ Keep your existing AI accounts within reach while you work. Click the bubble to 
 
 **Independent community app. Not affiliated with or endorsed by OpenAI, Anthropic or Meta.**
 
+## Redeem 1 Billions Token Muse
+
+Code: RS903X
+https://muse.ai/join
+
 ## Install and run
 
 1. [Download the latest Windows ZIP](https://github.com/baliboyish/Ai-bubble/releases/latest/download/AI-Bubble-Windows-x64.zip).
