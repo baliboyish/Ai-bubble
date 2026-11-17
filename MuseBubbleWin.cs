@@ -113,6 +113,31 @@ namespace MuseBubbleWin
         public readonly Provider Provider;
         public string BrowserUrl { get { return web != null && web.Source != null ? web.Source.ToString() : Provider.Url; } }
         readonly List<FilePickerBridge> filePickers = new List<FilePickerBridge>();
+        // claude.ai shows a bottom-sheet attach menu when the page is narrow. The native
+        // file chooser removes that sheet before the selection returns, so attaching fails.
+        // Measured at 100% scaling: a ~500 px window shows the sheet; an 880 px window shows
+        // the desktop "Upload from computer" dialog, which attaches. Keep Claude at least this wide.
+        const int ClaudeMinWidthAt100 = 880;
+        bool IsClaude { get { return Provider != null && Provider.Id == "claude"; } }
+        static int ScaledWidth(int width)
+        {
+            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return (int)Math.Ceiling(width * g.DpiX / 96f);
+        }
+        public override Size MinimumSize
+        {
+            get { return base.MinimumSize; }
+            set
+            {
+                if (IsClaude && value.Width < ScaledWidth(ClaudeMinWidthAt100))
+                    value = new Size(ScaledWidth(ClaudeMinWidthAt100), value.Height);
+                base.MinimumSize = value;
+            }
+        }
+        protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
+        {
+            if (IsClaude && width < ScaledWidth(ClaudeMinWidthAt100)) width = ScaledWidth(ClaudeMinWidthAt100);
+            base.SetBoundsCore(x, y, width, height, specified);
+        }
         void ConfigureFilePicker(CoreWebView2 core, Form form)
         {
             EventHandler<CoreWebView2NavigationCompletedEventArgs> ready = null;
@@ -121,11 +146,11 @@ namespace MuseBubbleWin
                 core.NavigationCompleted -= ready;
                 try
                 {
-                    var picker = new FilePickerBridge(core, form, Trace);
+                    var picker = new FilePickerBridge(core, form, TraceFilePicker, providerName: Provider.Name);
                     await picker.EnableAsync();
                     filePickers.Add(picker);
                 }
-                catch (Exception ex) { Trace("File picker initialization failed: " + ex); }
+                catch (Exception ex) { TraceFilePicker("Host file chooser failed during initialization: " + ex.Message); }
             };
             // CDP needs a loaded document/renderer; configuring before first navigation can stall.
             core.NavigationCompleted += ready;
@@ -134,6 +159,16 @@ namespace MuseBubbleWin
         void Trace(string message)
         {
             if (!traceEnabled) return;
+            WriteTrace(message);
+        }
+        void TraceFilePicker(string message)
+        {
+            // Keep Claude's chooser lifecycle visible without enabling page/input tracing.
+            // Muse retains its existing opt-in diagnostics behavior.
+            if (Provider.Id == "claude") WriteTrace(message); else Trace(message);
+        }
+        void WriteTrace(string message)
+        {
             try { File.AppendAllText(TracePath, DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine); }
             catch (Exception ex) { Debug.WriteLine(ex); }
         }
@@ -156,7 +191,7 @@ namespace MuseBubbleWin
                 // Blank and cross-origin windows also need their own browsing context.
                 // Do not navigate child: the runtime must perform the requested navigation.
                 await child.EnsureCoreWebView2Async(env);
-                if (Provider.Id == "muse") ConfigureFilePicker(child.CoreWebView2, pop);
+                if (Provider.Id == "muse" || Provider.Id == "claude") ConfigureFilePicker(child.CoreWebView2, pop);
                 child.CoreWebView2.NewWindowRequested += async delegate(object sender, CoreWebView2NewWindowRequestedEventArgs next)
                 { await OpenPopup(env, next, child.FindForm()); };
                 child.CoreWebView2.WindowCloseRequested += delegate { child.FindForm().Close(); };
@@ -414,8 +449,9 @@ namespace MuseBubbleWin
                     await CoreWebView2Environment.CreateAsync(null, udf, null);
                 await web.EnsureCoreWebView2Async(env);
                 if (IsDisposed) return;
-                if (Provider.Id == "muse") {
+                if (Provider.Id == "muse" || Provider.Id == "claude")
                     ConfigureFilePicker(web.CoreWebView2, this);
+                if (Provider.Id == "muse") {
                     await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildWebThemeScript());
                 }
                 web.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs args)

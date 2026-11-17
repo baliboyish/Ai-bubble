@@ -67,11 +67,11 @@ public class BehaviorChecks
             Call(bubble,"OnMouseUp",bubble,new MouseEventArgs(MouseButtons.Left,1,20,20,0));
             Check(!claude.Visible,"releasing a dragged bubble does not open chat");
             Call(bubble, "SetChatSize", 600, 720);
-            Check(claude.Width == Math.Min(600,work.Width) && claude.Height == Math.Min(720,work.Height), "size preset resizes selected window");
+            Check(claude.Width == Math.Max(Math.Min(600,work.Width), claude.MinimumSize.Width) && claude.Height == Math.Min(720,work.Height), "size preset resizes selected window");
             Form same = (Form)chats["claude"];
             Check(!same.Visible, "resizing a hidden chat does not open it");
             Call(bubble, "ShowChat");
-            Check(same.Visible && same.Size == new Size(Math.Min(600,work.Width),Math.Min(720,work.Height)), "reopen retains resized window");
+            Check(same.Visible && same.Size == new Size(Math.Max(Math.Min(600,work.Width), same.MinimumSize.Width),Math.Min(720,work.Height)), "reopen retains resized window");
             Call(bubble, "HideAll");
             Check(!gpt.Visible && !claude.Visible && !bubble.Visible, "hide all hides each assistant and bubble");
 
