@@ -1,0 +1,60 @@
+name: Windows build and release
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Windows x64
+        shell: pwsh
+        run: ./build.ps1
+      - name: Run behavior and rendering checks
+        shell: pwsh
+        run: ./tests/run.ps1
+      - name: Package portable app
+        shell: pwsh
+        run: ./package.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Bubble-Windows-x64
+          path: artifacts/package/*
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: AI-Bubble-Windows-x64
+          path: release-assets
+      - name: Publish latest version if not released
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $version=([xml](Get-Content AIBubbleWin.csproj -Raw)).Project.PropertyGroup.Version
+          $tag="v$version"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "$tag already exists; preserving its published assets."
+            exit 0
+          }
+          gh release create $tag release-assets/AI-Bubble-Windows-x64.zip release-assets/SHA256SUMS.txt --target "${{ github.sha }}" --title "AI Bubble $tag" --notes-file .github/release-notes.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

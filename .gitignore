@@ -1,0 +1,15 @@
+/artifacts/
+/bin/
+/obj/
+/.vs/
+/.debug/
+/verification/
+*.user
+*.suo
+*.log
+test-results.txt
+settings.json
+settings.ini
+WebView2Data/
+Profiles/
+*.zip
