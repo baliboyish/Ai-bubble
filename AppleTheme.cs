@@ -230,23 +230,41 @@ namespace MuseBubbleWin
     internal sealed class AppleTitleBar : Panel
     {
         internal ApplePalette Palette = new ApplePalette(false);
-        internal readonly AppleButton CloseButton = new AppleButton("Hide chat", "\u00d7") { Dot = Color.FromArgb(255, 95, 87) };
-        internal readonly AppleButton BackButton = new AppleButton("Return to previous app", "\u2212") { Dot = Color.FromArgb(254, 188, 46) };
-        internal readonly AppleButton FullButton = new AppleButton("Open Muse in browser", "+") { Dot = Color.FromArgb(40, 200, 64) };
+        internal readonly AppleButton FullButton = new AppleButton("Open full in browser", "+") { Dot = Color.FromArgb(40, 200, 64) };
         internal readonly AppleButton ThemeButton = new AppleButton("Switch theme", "\u263c");
         internal readonly AppleButton PinButton = new AppleButton("Keep on top", "\u2197");
         internal readonly Label Title = new Label();
         readonly ToolTip tips = new ToolTip();
+        internal event Action DragBegan, DragMoved, DragEnded;
+        bool dragging;
         internal AppleTitleBar()
         {
             DoubleBuffered = true; Height = 52;
             Title.Text = "Muse"; Title.TextAlign = ContentAlignment.MiddleCenter;
             Title.Font = new Font(Ui.FontName, 11, FontStyle.Bold); Title.BackColor = Color.Transparent;
             Controls.Add(Title);
-            foreach (var button in new[] { CloseButton, BackButton, FullButton, ThemeButton, PinButton })
+            foreach (var button in new[] { FullButton, ThemeButton, PinButton })
             { Controls.Add(button); tips.SetToolTip(button, button.AccessibleName); }
-            MouseDown += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) AppleDrawing.Drag(FindForm()); };
-            Title.MouseDown += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) AppleDrawing.Drag(FindForm()); };
+            MouseDown += BarMouseDown; Title.MouseDown += BarMouseDown;
+            MouseMove += BarMouseMove; Title.MouseMove += BarMouseMove;
+            MouseUp += BarMouseUp; Title.MouseUp += BarMouseUp;
+        }
+        void BarMouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            dragging = true; ((Control)sender).Capture = true;
+            var handler = DragBegan; if (handler != null) handler();
+        }
+        void BarMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!dragging) return;
+            var handler = DragMoved; if (handler != null) handler();
+        }
+        void BarMouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || !dragging) return;
+            dragging = false; ((Control)sender).Capture = false;
+            var handler = DragEnded; if (handler != null) handler();
         }
         internal void Apply(bool light, bool pinned)
         {
@@ -257,7 +275,7 @@ namespace MuseBubbleWin
             PinButton.Selected = pinned;
             PinButton.AccessibleName = pinned ? "Stop keeping on top" : "Keep on top";
             tips.SetToolTip(PinButton, PinButton.AccessibleName);
-            foreach (var button in new[] { CloseButton, BackButton, FullButton, ThemeButton, PinButton })
+            foreach (var button in new[] { FullButton, ThemeButton, PinButton })
             { button.Palette = Palette; button.Invalidate(); }
             Invalidate();
         }
@@ -266,12 +284,10 @@ namespace MuseBubbleWin
             base.OnLayout(e);
             if (Title == null) return;
             float s = Height / 52f; int target = (int)(28 * s), y = (Height - target) / 2;
-            CloseButton.SetBounds((int)(8 * s), y, target, target);
-            BackButton.SetBounds((int)(36 * s), y, target, target);
-            FullButton.SetBounds((int)(64 * s), y, target, target);
+            FullButton.SetBounds((int)(8 * s), y, target, target);
             ThemeButton.SetBounds(Width - (int)(78 * s), y, target, target);
             PinButton.SetBounds(Width - (int)(42 * s), y, target, target);
-            int left = (int)(94 * s), right = Width - (int)(88 * s);
+            int left = (int)(44 * s), right = Width - (int)(88 * s);
             Title.SetBounds(left, 0, Math.Max(0, right - left), Height);
         }
         protected override void OnPaintBackground(PaintEventArgs e)

@@ -16,6 +16,8 @@ namespace MuseBubbleWin
         readonly Timer hoverOpenTimer=new Timer(), hoverCloseTimer=new Timer(), foregroundTimer=new Timer();
         PanelForm panel; NotifyIcon tray; Icon trayIcon; ContextMenuStrip menu;
         Point dragOffset; IntPtr lastExternal; bool allowExit;
+        Point groupPointerStart, groupBubbleStart;
+        readonly Dictionary<string,Point> groupStarts=new Dictionary<string,Point>();
         DateTime suppressHoverUntil=DateTime.MinValue;
         public bool Light { get { return settings.Theme=="light"; } }
         internal bool Preview { get { return previewMode; } }
@@ -200,6 +202,43 @@ namespace MuseBubbleWin
             chat.Bounds=WindowGeometry.Clamp(new Rectangle(x,y,chat.Width,chat.Height),work);
         }
         public void HideChat(){foreach(var chat in chats.Values)chat.Hide();}
+        bool AnyChatVisible(){foreach(var chat in chats.Values)if(chat.Visible&&!chat.IsDisposed)return true;return false;}
+        public void ToggleChat()
+        {
+            HidePanel();suppressHoverUntil=DateTime.UtcNow.AddMilliseconds(650);
+            if(AnyChatVisible())HideChat();else ShowChat();
+        }
+        void BeginGroupDrag()
+        {
+            groupPointerStart=Cursor.Position;groupBubbleStart=Location;groupStarts.Clear();
+            foreach(var chat in chats.Values)if(chat.Visible&&!chat.IsDisposed)groupStarts[chat.Provider.Id]=chat.Location;
+        }
+        void GroupDragMove()
+        {
+            int dx=Cursor.Position.X-groupPointerStart.X,dy=Cursor.Position.Y-groupPointerStart.Y;
+            Location=new Point(groupBubbleStart.X+dx,groupBubbleStart.Y+dy);Render();
+            foreach(var pair in groupStarts){
+                ChatForm chat;if(!chats.TryGetValue(pair.Key,out chat)||!chat.Visible||chat.IsDisposed)continue;
+                var target=new Rectangle(pair.Value.X+dx,pair.Value.Y+dy,chat.Width,chat.Height);
+                chat.Bounds=WindowGeometry.Clamp(target,Screen.FromRectangle(target).WorkingArea);
+            }
+        }
+        void EndGroupDrag()
+        {
+            Point before=Location;ClampBubble();
+            int cx=Location.X-before.X,cy=Location.Y-before.Y;
+            if(cx!=0||cy!=0)foreach(var pair in groupStarts){
+                ChatForm chat;if(!chats.TryGetValue(pair.Key,out chat)||!chat.Visible||chat.IsDisposed)continue;
+                var target=new Rectangle(chat.Left+cx,chat.Top+cy,chat.Width,chat.Height);
+                chat.Bounds=WindowGeometry.Clamp(target,Screen.FromRectangle(target).WorkingArea);
+            }
+            Render();Persist();
+            foreach(var pair in groupStarts){ChatForm chat;if(chats.TryGetValue(pair.Key,out chat)&&!chat.IsDisposed)RememberChat(chat);}
+            groupStarts.Clear();
+        }
+        internal void BeginChatDrag(){HidePanel();hoverOpenTimer.Stop();BeginGroupDrag();}
+        internal void ChatDragMove(){GroupDragMove();}
+        internal void EndChatDrag(){EndGroupDrag();}
         public void SetChatSize(int width,int height)
         {
             var chat=GetChat(Selected);var work=Screen.FromRectangle(chat.Bounds).WorkingArea;
@@ -252,18 +291,18 @@ namespace MuseBubbleWin
         void OnMouseDown(object sender,MouseEventArgs e)
         {
             if(e.Button!=MouseButtons.Left)return;
-            HidePanel();hoverOpenTimer.Stop();dragOffset=e.Location;gesture.Begin(Cursor.Position);Capture=true;
+            HidePanel();hoverOpenTimer.Stop();dragOffset=e.Location;gesture.Begin(Cursor.Position);BeginGroupDrag();Capture=true;
         }
         void OnMouseMove(object sender,MouseEventArgs e)
         {
             if(!gesture.Active||e.Button!=MouseButtons.Left)return;
-            if(gesture.Move(Cursor.Position)){Location=new Point(Cursor.Position.X-dragOffset.X,Cursor.Position.Y-dragOffset.Y);Render();}
+            if(gesture.Move(Cursor.Position))GroupDragMove();
         }
         void OnMouseUp(object sender,MouseEventArgs e)
         {
             if(e.Button!=MouseButtons.Left||!gesture.Active)return;
             bool dragged=gesture.End();Capture=false;suppressHoverUntil=DateTime.UtcNow.AddMilliseconds(650);
-            if(dragged){ClampBubble();Render();Persist();}else ShowChat();
+            if(dragged)EndGroupDrag();else ToggleChat();
         }
         public void ExitApp(){allowExit=true;Persist();Close();}
         protected override void Dispose(bool disposing)

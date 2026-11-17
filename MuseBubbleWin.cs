@@ -245,9 +245,10 @@ namespace MuseBubbleWin
             themeBar.Dock = DockStyle.Top;
             themeBar.Title.Text = Provider.Name;
             Controls.Add(themeBar);
-            themeBar.CloseButton.Click += delegate { Hide(); };
-            themeBar.BackButton.Click += delegate { owner2.GoBack(); };
             themeBar.FullButton.Click += delegate { owner2.OpenMuse(); };
+            themeBar.DragBegan += delegate { owner2.BeginChatDrag(); };
+            themeBar.DragMoved += delegate { owner2.ChatDragMove(); };
+            themeBar.DragEnded += delegate { owner2.EndChatDrag(); };
             themeBar.ThemeButton.Click += delegate { owner2.SetTheme(owner2.Light ? "dark" : "light"); };
             themeBar.PinButton.Click += delegate { SetPinned(!TopMost); };
             ContextMenuStrip diagnostics = new ContextMenuStrip();

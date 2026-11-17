@@ -21,7 +21,7 @@
 
 ![ChatGPT open beside the AI Bubble on Windows](docs/images/chatgpt-mini-chat.png)
 
-Keep your existing AI accounts within reach while you work. Click the bubble to open your last-used assistant, or hover to choose ChatGPT, Claude or Muse. These are the real service websites with interactive login — no AI API keys.
+Keep your existing AI accounts within reach while you work. Click the bubble to open your last-used assistant — click again to tuck it away — or hover to choose ChatGPT, Claude or Muse. These are the real service websites with interactive login — no AI API keys.
 
 **Independent community app. Not affiliated with or endorsed by OpenAI, Anthropic or Meta.**
 
@@ -69,14 +69,12 @@ These are real screenshots supplied by the maintainer.
 
 | Action | What happens |
 | --- | --- |
-| Left click bubble | Open or focus the last assistant |
-| Hold left and drag | Move bubble without opening chat on release |
+| Left click bubble | Open the last assistant; click again to hide it |
+| Hold left and drag | Move the bubble and any open chat together, without opening chat on release |
 | Hover over bubble | Show assistant picker |
 | Right click bubble/tray | Open settings |
 | Drag chat edge/corner | Resize chat |
-| Drag chat title bar | Move chat |
-| Red dot | Hide chat |
-| Yellow dot | Return to the previous app |
+| Drag chat title bar | Move the chat and the bubble together |
 | Green dot | Open current page in your browser |
 | Sun/moon | Switch frame theme |
 | Pin | Toggle keeping this assistant above other windows |
