@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -24,7 +25,7 @@ internal sealed class FilePickerBridge
     {
         this.core = core; this.owner = owner; this.log = log;
         this.providerName = providerName;
-        this.choose = choose ?? ChooseFiles;
+        this.choose = choose;
     }
 
     internal async Task EnableAsync()
@@ -58,6 +59,15 @@ internal sealed class FilePickerBridge
     {
         if (pending || owner.IsDisposed) return;
         pending = true;
+        try { await HandleSelectionAsync(payload); }
+        finally { pending = false; }
+    }
+
+    async Task HandleSelectionAsync(string payload)
+    {
+        bool guardStarted = false, restoreTopMost = false, wasTopMost = false;
+        Task cleanup = null;
+        Exception failure = null;
         string operation = "parse chooser event";
         try
         {
@@ -85,29 +95,99 @@ internal sealed class FilePickerBridge
             bool multiple = (string)request["mode"] == "selectMultiple";
             log("File chooser requested; multiple=" + multiple + "; directory=" + directory);
             operation = "choose files";
-            string[] files = choose(multiple, directory);
-            if (files == null) { log("File chooser cancelled"); return; }
-            if (providerName == "Claude")
+            string[] files;
+            if (choose != null)
             {
-                ProbeFileArguments(files);
-                await ProbeInputStateAsync(node);
+                files = choose(multiple, directory);
             }
-            target["files"] = files;
-            operation = "DOM.setFileInputFiles";
-            if (providerName == "Claude")
-                log("Before DOM.setFileInputFiles; backendNodeId=" + node + "; fileCount=" + files.Length);
-            await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", json.Serialize(target));
-            log("File selection delivered; count=" + files.Length);
+            else
+            {
+                if (providerName == "Claude" && !owner.IsDisposed)
+                {
+                    guardStarted = true;
+                    await SetPickingAsync(true);
+                }
+                if (owner.IsDisposed)
+                {
+                    files = null;
+                }
+                else
+                {
+                    wasTopMost = owner.TopMost;
+                    restoreTopMost = true;
+                    if (wasTopMost) owner.TopMost = false;
+                    files = await ChooseFilesAsync(multiple, directory);
+                }
+            }
+            if (files == null || owner.IsDisposed)
+            {
+                log("File chooser cancelled");
+            }
+            else
+            {
+                if (providerName == "Claude")
+                {
+                    ProbeFileArguments(files);
+                    await ProbeInputStateAsync(node);
+                }
+                target["files"] = files;
+                operation = "DOM.setFileInputFiles";
+                if (providerName == "Claude")
+                    log("Before DOM.setFileInputFiles; backendNodeId=" + node + "; fileCount=" + files.Length);
+                await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", json.Serialize(target));
+                log("File selection delivered; count=" + files.Length);
+            }
         }
         catch (Exception ex)
         {
             if (providerName == "Claude")
                 log("Host file chooser failed at " + operation + "; HResult=0x" + ex.HResult.ToString("X8") + ": " + ex);
             else log("Host file chooser failed: " + ex);
-            MessageBox.Show(owner, "Could not attach the selected file: " + ex.Message,
-                providerName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            failure = ex;
         }
-        finally { pending = false; }
+        finally
+        {
+            if (guardStarted) cleanup = SetPickingAsync(false);
+            if (restoreTopMost && !owner.IsDisposed) owner.TopMost = wasTopMost;
+        }
+        if (cleanup != null) await cleanup;
+        if (failure != null && !owner.IsDisposed)
+            MessageBox.Show(owner, "Could not attach the selected file: " + failure.Message,
+                providerName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    const string BeginPicking = @"
+(() => {
+    if (window.__aibubbleStopPicking) window.__aibubbleStopPicking();
+    const targets = [window, document];
+    const events = ['blur', 'focusout'];
+    const suppress = event => {
+        if (window.__aibubblePicking) event.stopImmediatePropagation();
+    };
+    window.__aibubblePicking = true;
+    window.__aibubbleStopPicking = () => {
+        window.__aibubblePicking = false;
+        for (const target of targets)
+            for (const type of events) target.removeEventListener(type, suppress, true);
+        delete window.__aibubbleStopPicking;
+    };
+    for (const target of targets)
+        for (const type of events) target.addEventListener(type, suppress, { capture: true, once: true });
+})();
+";
+    const string EndPicking =
+        "window.__aibubblePicking = false; if (window.__aibubbleStopPicking) window.__aibubbleStopPicking();";
+
+    async Task SetPickingAsync(bool picking)
+    {
+        try
+        {
+            var response = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", json.Serialize(
+                new Dictionary<string, object> { { "expression", picking ? BeginPicking : EndPicking } }));
+            if (json.Deserialize<Dictionary<string, object>>(response).ContainsKey("exceptionDetails"))
+                log("Claude file picker focus guard script failed");
+        }
+        catch (Exception ex) { log("Claude file picker focus guard failed: " + ex.Message); }
     }
 
 
@@ -163,14 +243,47 @@ internal sealed class FilePickerBridge
         }
     }
 
+    async Task<string[]> ChooseFilesAsync(bool multiple, bool directory)
+    {
+        try
+        {
+            var dialogOwner = new DialogOwner(owner.Handle);
+            var completion = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thread = new Thread(() =>
+            {
+                try { completion.SetResult(ShowPicker(dialogOwner, multiple, directory, true)); }
+                catch (Exception ex) { completion.SetException(ex); }
+            }) { IsBackground = true };
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            return await completion.Task;
+        }
+        catch (Exception ex)
+        {
+            log("Modern file picker failed, trying classic picker: " + ex);
+        }
+        return owner.IsDisposed ? null : ChooseFiles(multiple, directory);
+    }
+
+    sealed class DialogOwner : IWin32Window
+    {
+        public IntPtr Handle { get; private set; }
+        internal DialogOwner(IntPtr handle) { Handle = handle; }
+    }
+
     string[] ChooseFiles(bool multiple, bool directory)
+    {
+        return ShowPicker(owner, multiple, directory, false);
+    }
+
+    string[] ShowPicker(IWin32Window dialogOwner, bool multiple, bool directory, bool modern)
     {
         if (directory)
         {
             using (var dialog = new FolderBrowserDialog())
             {
                 dialog.Description = "Choose a folder to attach";
-                return dialog.ShowDialog(owner) == DialogResult.OK ? new[] { dialog.SelectedPath } : null;
+                return dialog.ShowDialog(dialogOwner) == DialogResult.OK ? new[] { dialog.SelectedPath } : null;
             }
         }
         using (var dialog = new OpenFileDialog())
@@ -180,9 +293,8 @@ internal sealed class FilePickerBridge
             dialog.Filter = "All files (*.*)|*.*";
             dialog.CheckFileExists = true;
             dialog.RestoreDirectory = true;
-            // Use the classic Win32 picker, avoiding the runtime's COM shell dialog path.
-            dialog.AutoUpgradeEnabled = false;
-            return dialog.ShowDialog(owner) == DialogResult.OK ? dialog.FileNames : null;
+            dialog.AutoUpgradeEnabled = modern;
+            return dialog.ShowDialog(dialogOwner) == DialogResult.OK ? dialog.FileNames : null;
         }
     }
 }

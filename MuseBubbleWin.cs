@@ -113,31 +113,6 @@ namespace MuseBubbleWin
         public readonly Provider Provider;
         public string BrowserUrl { get { return web != null && web.Source != null ? web.Source.ToString() : Provider.Url; } }
         readonly List<FilePickerBridge> filePickers = new List<FilePickerBridge>();
-        // claude.ai shows a bottom-sheet attach menu when the page is narrow. The native
-        // file chooser removes that sheet before the selection returns, so attaching fails.
-        // Measured at 100% scaling: a ~500 px window shows the sheet; an 880 px window shows
-        // the desktop "Upload from computer" dialog, which attaches. Keep Claude at least this wide.
-        const int ClaudeMinWidthAt100 = 880;
-        bool IsClaude { get { return Provider != null && Provider.Id == "claude"; } }
-        static int ScaledWidth(int width)
-        {
-            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return (int)Math.Ceiling(width * g.DpiX / 96f);
-        }
-        public override Size MinimumSize
-        {
-            get { return base.MinimumSize; }
-            set
-            {
-                if (IsClaude && value.Width < ScaledWidth(ClaudeMinWidthAt100))
-                    value = new Size(ScaledWidth(ClaudeMinWidthAt100), value.Height);
-                base.MinimumSize = value;
-            }
-        }
-        protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
-        {
-            if (IsClaude && width < ScaledWidth(ClaudeMinWidthAt100)) width = ScaledWidth(ClaudeMinWidthAt100);
-            base.SetBoundsCore(x, y, width, height, specified);
-        }
         void ConfigureFilePicker(CoreWebView2 core, Form form)
         {
             EventHandler<CoreWebView2NavigationCompletedEventArgs> ready = null;
