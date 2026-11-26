@@ -240,10 +240,13 @@ namespace MuseBubbleWin
             Text = Provider.Name + " — AI Bubble";
             Size = new Size(392, 600);
             MinimumSize = new Size(360, 460);
-            Padding = new Padding(7);
+            Padding = new Padding(1);
             themeBar = new AppleTitleBar();
             themeBar.Dock = DockStyle.Top;
             themeBar.Title.Text = Provider.Name;
+            themeBar.SetActiveProvider(Provider.Id);
+            themeBar.ProviderSelected += id => owner2.SelectProvider(id);
+            themeBar.CloseButton.Click += delegate { Hide(); };
             Controls.Add(themeBar);
             themeBar.FullButton.Click += delegate { owner2.OpenMuse(); };
             themeBar.DragBegan += delegate { owner2.BeginChatDrag(); };
@@ -406,6 +409,22 @@ namespace MuseBubbleWin
             return Embedded("MuseTheme.js").Replace("__MUSEBUBBLE_CSS__", json.Serialize(Embedded("MuseTheme.css")));
         }
 
+        const string ScrollbarScript = @"
+(() => {
+    if (!document.head || document.getElementById('__aibubble-scroll')) return;
+    const style = document.createElement('style');
+    style.id = '__aibubble-scroll';
+    style.textContent = `
+        *, *::before, *::after { scrollbar-width: auto !important; scrollbar-color: auto !important; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(142,142,147,0.35); border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(142,142,147,0.55); }
+    `;
+    document.head.appendChild(style);
+})();
+";
+
         async void ApplyWebTheme()
         {
             if (web.CoreWebView2 == null) return;
@@ -413,8 +432,12 @@ namespace MuseBubbleWin
             {
                 web.CoreWebView2.Profile.PreferredColorScheme = owner2.Light
                     ? CoreWebView2PreferredColorScheme.Light : CoreWebView2PreferredColorScheme.Dark;
-                if (Provider.Id != "muse") return;
-                string result = await web.CoreWebView2.ExecuteScriptAsync(BuildWebThemeScript() +
+                if (Provider.Id != "muse")
+                {
+                    await web.CoreWebView2.ExecuteScriptAsync(ScrollbarScript);
+                    return;
+                }
+                string result = await web.CoreWebView2.ExecuteScriptAsync(ScrollbarScript + BuildWebThemeScript() +
                     "\n(()=>{if(!window.__museBubbleTheme)return 'out-of-scope';window.__museBubbleTheme('" +
                     (owner2.Light ? "light" : "dark") + "'," + (styleMusePage ? "true" : "false") +
                     ");return JSON.stringify({theme:document.documentElement.getAttribute('data-musebubble-theme')," +
@@ -430,8 +453,10 @@ namespace MuseBubbleWin
         {
             base.OnPaint(e);
             if (Width < 4 || Height < 4) return;
-            using (var pen = new Pen(Provider.Accent, 1.5f))
-            using (var path = AppleDrawing.Rounded(new RectangleF(.5f, .5f, ClientSize.Width - 1, ClientSize.Height - 1), 20 * this.DeviceScale()))
+            var palette = new ApplePalette(owner2.Light);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var pen = new Pen(palette.Border))
+            using (var path = AppleDrawing.Rounded(new RectangleF(.5f, .5f, ClientSize.Width - 1, ClientSize.Height - 1), 14 * this.DeviceScale()))
                 e.Graphics.DrawPath(pen, path);
         }
         public async void InitWeb()

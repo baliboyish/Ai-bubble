@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 using System.Web.Script.Serialization;
@@ -102,24 +103,54 @@ namespace MuseBubbleWin
     {
         internal static Bitmap Render(int size,Provider selected,bool light)
         {
-            var b=new Bitmap(size,size,System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            using(var g=Graphics.FromImage(b)) {
-                g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                var r=new RectangleF(size*.08f,size*.08f,size*.84f,size*.84f);
-                for(int i=5;i>0;i--)using(var glow=new Pen(Color.FromArgb(12,selected.Accent),i*size*.025f))g.DrawEllipse(glow,r);
-                using(var fill=new System.Drawing.Drawing2D.LinearGradientBrush(r,Color.FromArgb(47,56,98),Color.FromArgb(12,17,38),60f))g.FillEllipse(fill,r);
-                var arc=new RectangleF(size*.14f,size*.14f,size*.72f,size*.72f);
-                Color[] colors={Provider.All[2].Accent,Provider.All[0].Accent,Provider.All[1].Accent};
-                for(int i=0;i<3;i++)using(var pen=new Pen(colors[i],size*.075f)) {
-                    pen.StartCap=pen.EndCap=System.Drawing.Drawing2D.LineCap.Round;g.DrawArc(pen,arc,-85+i*120,100);
+            var palette = new ApplePalette(light);
+            var bitmap = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var body = new RectangleF(size * .10f, size * .075f, size * .80f, size * .80f);
+                float corner = body.Width * .30f;
+                for (int pass = 6; pass >= 1; pass--)
+                {
+                    float spread = pass * size * .013f;
+                    var shadow = RectangleF.Inflate(body, spread, spread);
+                    shadow.Offset(0, size * .035f);
+                    using (var path = AppleDrawing.Rounded(shadow, corner + spread))
+                    using (var fill = new SolidBrush(Color.FromArgb(5 + (6 - pass) * 2, Color.Black)))
+                        g.FillPath(fill, path);
                 }
-                using(var font=new Font(Ui.FontName,size*.215f,FontStyle.Bold,GraphicsUnit.Pixel))
-                using(var ink=new SolidBrush(Color.White))
-                using(var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center})
-                    g.DrawString("AI",font,ink,new RectangleF(0,0,size,size*.97f),format);
-                using(var dot=new SolidBrush(selected.Accent))g.FillEllipse(dot,size*.65f,size*.69f,size*.14f,size*.14f);
+
+                using (var path = AppleDrawing.Rounded(body, corner))
+                {
+                    using (var fill = new LinearGradientBrush(body, palette.Raised, palette.Surface, 90f))
+                        g.FillPath(fill, path);
+
+                    var state = g.Save();
+                    g.SetClip(path, CombineMode.Intersect);
+                    var highlight = new RectangleF(body.X, body.Y, body.Width, body.Height * .48f);
+                    using (var shine = new LinearGradientBrush(highlight, Color.FromArgb(light ? 100 : 23, Color.White),
+                        Color.FromArgb(0, Color.White), 90f))
+                        g.FillRectangle(shine, highlight);
+                    g.Restore(state);
+
+                    using (var rim = new Pen(light ? palette.Border : Color.FromArgb(80, 82, 89)))
+                        g.DrawPath(rim, path);
+                }
+
+                float cx = body.X + body.Width / 2, cy = body.Y + body.Height / 2;
+                float radius = size * .228f, waist = radius * .24f;
+                using (var sparkle = new GraphicsPath())
+                using (var ink = new SolidBrush(palette.Ink))
+                {
+                    sparkle.AddBezier(cx, cy - radius, cx + waist, cy - waist, cx + waist, cy - waist, cx + radius, cy);
+                    sparkle.AddBezier(cx + radius, cy, cx + waist, cy + waist, cx + waist, cy + waist, cx, cy + radius);
+                    sparkle.AddBezier(cx, cy + radius, cx - waist, cy + waist, cx - waist, cy + waist, cx - radius, cy);
+                    sparkle.AddBezier(cx - radius, cy, cx - waist, cy - waist, cx - waist, cy - waist, cx, cy - radius);
+                    sparkle.CloseFigure();
+                    g.FillPath(ink, sparkle);
+                }
             }
-            return b;
+            return bitmap;
         }
     }
 }

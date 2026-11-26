@@ -8,17 +8,19 @@ namespace MuseBubbleWin
 {
     internal sealed class ApplePalette
     {
-        internal readonly Color Surface, Raised, Ink, Muted, Accent, Border, HeaderTop, HeaderBottom;
+        internal readonly Color Surface, Raised, Ink, Muted, Accent, Border, HeaderTop, HeaderBottom, PillActive, PillHover;
         internal ApplePalette(bool light)
         {
-            Surface = ColorTranslator.FromHtml(light ? "#F8F8FC" : "#20222D");
-            Raised = ColorTranslator.FromHtml(light ? "#FFFFFF" : "#303340");
-            Ink = ColorTranslator.FromHtml(light ? "#20212A" : "#F5F5FA");
-            Muted = ColorTranslator.FromHtml(light ? "#626574" : "#B6BAC9");
-            Accent = ColorTranslator.FromHtml(light ? "#0066E8" : "#6AA5FF");
-            Border = ColorTranslator.FromHtml(light ? "#DCDEE8" : "#484C5C");
-            HeaderTop = ColorTranslator.FromHtml(light ? "#F6F5FF" : "#3B3D50");
-            HeaderBottom = ColorTranslator.FromHtml(light ? "#E9EBF6" : "#2C2F3E");
+            Surface = ColorTranslator.FromHtml(light ? "#F5F5F7" : "#16171B");
+            Raised = ColorTranslator.FromHtml(light ? "#FFFFFF" : "#22242A");
+            Ink = ColorTranslator.FromHtml(light ? "#1D1D1F" : "#F2F2F7");
+            Muted = ColorTranslator.FromHtml(light ? "#6E6E73" : "#8E8E93");
+            Accent = ColorTranslator.FromHtml(light ? "#1D1D1F" : "#FFFFFF");
+            Border = ColorTranslator.FromHtml(light ? "#D8D8DE" : "#2E3038");
+            HeaderTop = ColorTranslator.FromHtml(light ? "#F2F2F5" : "#1C1D22");
+            HeaderBottom = ColorTranslator.FromHtml(light ? "#ECECF0" : "#18191E");
+            PillActive = light ? Color.FromArgb(24, Color.Black) : Color.FromArgb(30, Color.White);
+            PillHover = light ? Color.FromArgb(14, Color.Black) : Color.FromArgb(18, Color.White);
         }
     }
 
@@ -85,17 +87,28 @@ namespace MuseBubbleWin
         internal static void RoundWindow(Form form, bool light)
         {
             if (!form.IsHandleCreated || form.Width < 2 || form.Height < 2) return;
-            int corners = 2, dark = light ? 0 : 1;
+            int corners = 2, dark = light ? 0 : 1, acrylic = 3;
             try
             {
                 var margins = new Margins { Left = 1, Right = 1, Top = 1, Bottom = 1 };
                 DwmExtendFrameIntoClientArea(form.Handle, ref margins);
                 DwmSetWindowAttribute(form.Handle, 20, ref dark, 4);
-                if (DwmSetWindowAttribute(form.Handle, 33, ref corners, 4) == 0) return;
+                // DWMSBT_TRANSIENTWINDOW (Desktop Acrylic), available on Windows 11.
+                DwmSetWindowAttribute(form.Handle, 38, ref acrylic, 4);
+                if (DwmSetWindowAttribute(form.Handle, 33, ref corners, 4) == 0)
+                {
+                    Region previous = form.Region;
+                    if (previous != null)
+                    {
+                        form.Region = null;
+                        previous.Dispose();
+                    }
+                    return;
+                }
             }
             catch (DllNotFoundException) { }
             catch (EntryPointNotFoundException) { }
-            using (var path = Rounded(new RectangleF(0, 0, form.Width, form.Height), 20 * form.DeviceScale()))
+            using (var path = Rounded(new RectangleF(0, 0, form.Width, form.Height), 14 * form.DeviceScale()))
             {
                 Region previous = form.Region;
                 form.Region = new Region(path);
@@ -117,7 +130,6 @@ namespace MuseBubbleWin
     internal sealed class AppleButton : Button
     {
         internal ApplePalette Palette = new ApplePalette(false);
-        internal Color Dot = Color.Empty;
         internal string Symbol;
         internal bool Selected;
         bool hover, pressed;
@@ -125,6 +137,7 @@ namespace MuseBubbleWin
         {
             AccessibleName = name; AccessibleRole = AccessibleRole.PushButton;
             Text = name; Symbol = symbol; Cursor = Cursors.Hand;
+            Font = new Font(Ui.FontName, 9f);
             SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
             FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
@@ -141,55 +154,36 @@ namespace MuseBubbleWin
         {
             Graphics g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
             g.SetClip(ClientRectangle, CombineMode.Intersect);
-            // Opaque controls must repaint every pixel themselves. Never ask WinForms
-            // to replay the parent (and sibling labels) through a transparent button.
-            var header = Parent as AppleTitleBar;
-            if (header != null)
-            {
-                var background = new Rectangle(-Left, -Top, Math.Max(1, Parent.Width), Math.Max(1, Parent.Height));
-                using (var fill = new LinearGradientBrush(background, Palette.HeaderTop, Palette.HeaderBottom, 25f))
-                    g.FillRectangle(fill, ClientRectangle);
-            }
-            else using (var fill = new SolidBrush(Palette.Surface)) g.FillRectangle(fill, ClientRectangle);
+            g.Clear(Palette.HeaderTop);
+            if (Width < 3 || Height < 3) return;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            float scale = Dot.IsEmpty && Symbol == null ? g.DpiX / 96f : Math.Min(Width, Height) / 28f;
+            float scale = Height / 28f;
             var area = new RectangleF(1, 1, Width - 2, Height - 2);
-            using (var path = AppleDrawing.Rounded(area, Math.Min(12 * scale, Height / 2)))
+            using (var path = AppleDrawing.Rounded(area, 7 * scale))
             {
-                if (Dot.IsEmpty || hover || Focused)
-                    using (var bg = new SolidBrush(Color.FromArgb(pressed ? 65 : hover ? 40 : Selected ? 28 : 0, Palette.Accent)))
-                        g.FillPath(bg, path);
-                if (Focused) using (var pen = new Pen(Palette.Accent, 2 * scale)) g.DrawPath(pen, path);
+                using (var fill = new SolidBrush(Selected || pressed ? Palette.PillActive :
+                    hover ? Palette.PillHover : Color.Transparent))
+                    g.FillPath(fill, path);
+                if (Focused)
+                    using (var pen = new Pen(Palette.Accent, 1.35f * scale)) g.DrawPath(pen, path);
             }
-            if (!Dot.IsEmpty)
+            if (Symbol != null)
             {
-                float d = 12 * scale;
-                var dot = new RectangleF((Width - d) / 2, (Height - d) / 2, d, d);
-                using (var fill = new SolidBrush(Dot)) g.FillEllipse(fill, dot);
-                using (var pen = new Pen(Color.FromArgb(40, Color.Black), scale)) g.DrawEllipse(pen, dot);
-                if (hover || Focused)
-                    using (var font = new Font(Ui.FontName, 8, FontStyle.Bold))
-                    using (var ink = new SolidBrush(Color.FromArgb(85, 40, 30)))
-                    using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                        g.DrawString(Symbol, font, ink, dot, format);
+                PaintSymbol(g, scale);
+                return;
             }
-            else
-            {
-                if (Symbol != null) { PaintSymbol(g, scale); return; }
-                using (var font = new Font(Ui.FontName, 10, FontStyle.Regular))
-                using (var ink = new SolidBrush(Selected ? Palette.Accent : Palette.Ink))
-                using (var format = new StringFormat { Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter,
-                    FormatFlags = StringFormatFlags.NoWrap })
-                    g.DrawString(Text, font, ink, new RectangleF(8, 0, Math.Max(1, Width - 16), Height), format);
-            }
+            using (var ink = new SolidBrush(Palette.Ink))
+            using (var format = new StringFormat { Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter,
+                FormatFlags = StringFormatFlags.NoWrap })
+                g.DrawString(Text, Font, ink, new RectangleF(2, 0, Width - 4, Height), format);
         }
 
         void PaintSymbol(Graphics g, float scale)
         {
             float cx = Width / 2f, cy = Height / 2f, r = 5 * scale;
             Color ink = Selected ? Palette.Accent : Palette.Ink;
-            using (var pen = new Pen(ink, 1.4f * scale))
+            using (var pen = new Pen(ink, 1.35f * scale))
             {
                 pen.StartCap = pen.EndCap = LineCap.Round;
                 if (Symbol == "\u263c")
@@ -214,6 +208,21 @@ namespace MuseBubbleWin
                         { region.Exclude(cutout); g.FillRegion(fill, region); }
                     }
                 }
+                else if (Symbol == "external")
+                {
+                    g.DrawLines(pen, new[] {
+                        new PointF(cx + 6 * scale, cy + scale), new PointF(cx + 6 * scale, cy + 6 * scale),
+                        new PointF(cx - 6 * scale, cy + 6 * scale), new PointF(cx - 6 * scale, cy - 6 * scale),
+                        new PointF(cx - scale, cy - 6 * scale) });
+                    g.DrawLine(pen, cx, cy, cx + 6 * scale, cy - 6 * scale);
+                    g.DrawLines(pen, new[] { new PointF(cx + scale, cy - 6 * scale),
+                        new PointF(cx + 6 * scale, cy - 6 * scale), new PointF(cx + 6 * scale, cy - scale) });
+                }
+                else if (Symbol == "close")
+                {
+                    g.DrawLine(pen, cx - r, cy - r, cx + r, cy + r);
+                    g.DrawLine(pen, cx + r, cy - r, cx - r, cy + r);
+                }
                 else
                 {
                     var state = g.Save(); g.TranslateTransform(cx, cy); g.RotateTransform(35);
@@ -230,25 +239,54 @@ namespace MuseBubbleWin
     internal sealed class AppleTitleBar : Panel
     {
         internal ApplePalette Palette = new ApplePalette(false);
-        internal readonly AppleButton FullButton = new AppleButton("Open full in browser", "+") { Dot = Color.FromArgb(40, 200, 64) };
+        internal readonly AppleButton FullButton = new AppleButton("Open in browser", "external");
         internal readonly AppleButton ThemeButton = new AppleButton("Switch theme", "\u263c");
-        internal readonly AppleButton PinButton = new AppleButton("Keep on top", "\u2197");
+        internal readonly AppleButton PinButton = new AppleButton("Keep on top", "pin");
+        internal readonly AppleButton CloseButton = new AppleButton("Hide chat", "close");
         internal readonly Label Title = new Label();
+        readonly AppleButton[] providerButtons;
+        readonly AppleButton[] actionButtons;
         readonly ToolTip tips = new ToolTip();
         internal event Action DragBegan, DragMoved, DragEnded;
+        internal event Action<string> ProviderSelected;
         bool dragging;
+
         internal AppleTitleBar()
         {
-            DoubleBuffered = true; Height = 52;
-            Title.Text = "Muse"; Title.TextAlign = ContentAlignment.MiddleCenter;
-            Title.Font = new Font(Ui.FontName, 11, FontStyle.Bold); Title.BackColor = Color.Transparent;
+            DoubleBuffered = true;
+            Height = 38;
+            Title.Visible = false;
             Controls.Add(Title);
-            foreach (var button in new[] { FullButton, ThemeButton, PinButton })
-            { Controls.Add(button); tips.SetToolTip(button, button.AccessibleName); }
-            MouseDown += BarMouseDown; Title.MouseDown += BarMouseDown;
-            MouseMove += BarMouseMove; Title.MouseMove += BarMouseMove;
-            MouseUp += BarMouseUp; Title.MouseUp += BarMouseUp;
+            providerButtons = new AppleButton[Provider.All.Length];
+            for (int i = 0; i < Provider.All.Length; i++)
+            {
+                Provider provider = Provider.All[i];
+                var button = new AppleButton(provider.Name, null) { Tag = provider.Id };
+                button.Click += delegate { if (ProviderSelected != null) ProviderSelected(provider.Id); };
+                providerButtons[i] = button;
+                Controls.Add(button);
+            }
+            actionButtons = new[] { ThemeButton, PinButton, FullButton, CloseButton };
+            foreach (var button in actionButtons)
+            {
+                Controls.Add(button);
+                tips.SetToolTip(button, button.AccessibleName);
+            }
+            MouseDown += BarMouseDown;
+            MouseMove += BarMouseMove;
+            MouseUp += BarMouseUp;
         }
+
+        internal void SetActiveProvider(string id)
+        {
+            foreach (var button in providerButtons)
+            {
+                button.Selected = (string)button.Tag == id;
+                button.AccessibleDescription = button.Selected ? "Current provider" : null;
+                button.Invalidate();
+            }
+        }
+
         void BarMouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left) return;
@@ -275,25 +313,36 @@ namespace MuseBubbleWin
             PinButton.Selected = pinned;
             PinButton.AccessibleName = pinned ? "Stop keeping on top" : "Keep on top";
             tips.SetToolTip(PinButton, PinButton.AccessibleName);
-            foreach (var button in new[] { FullButton, ThemeButton, PinButton })
+            foreach (var button in providerButtons)
+            { button.Palette = Palette; button.Invalidate(); }
+            foreach (var button in actionButtons)
             { button.Palette = Palette; button.Invalidate(); }
             Invalidate();
         }
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);
-            if (Title == null) return;
-            float s = Height / 52f; int target = (int)(28 * s), y = (Height - target) / 2;
-            FullButton.SetBounds((int)(8 * s), y, target, target);
-            ThemeButton.SetBounds(Width - (int)(78 * s), y, target, target);
-            PinButton.SetBounds(Width - (int)(42 * s), y, target, target);
-            int left = (int)(44 * s), right = Width - (int)(88 * s);
-            Title.SetBounds(left, 0, Math.Max(0, right - left), Height);
+            if (actionButtons == null) return;
+            float scale = Height / 38f;
+            int edge = (int)Math.Round(8 * scale);
+            int target = Math.Max(1, (int)Math.Round(28 * scale));
+            int y = (Height - target) / 2;
+            int right = Width - edge - target * actionButtons.Length;
+            for (int i = 0; i < actionButtons.Length; i++)
+                actionButtons[i].SetBounds(right + i * target, y, target, target);
+            int left = edge;
+            int segment = Math.Max(0, Math.Min((int)Math.Round(62 * scale),
+                (right - 2 * edge) / providerButtons.Length));
+            foreach (var button in providerButtons)
+            {
+                button.SetBounds(left, y, segment, target);
+                left += segment;
+            }
         }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             if (Width < 1 || Height < 1) return;
-            using (var fill = new LinearGradientBrush(ClientRectangle, Palette.HeaderTop, Palette.HeaderBottom, 25f))
+            using (var fill = new SolidBrush(Palette.HeaderTop))
                 e.Graphics.FillRectangle(fill, ClientRectangle);
             using (var pen = new Pen(Palette.Border)) e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
         }
@@ -310,7 +359,7 @@ namespace MuseBubbleWin
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             if (!e.Item.Selected) return;
-            using (var fill = new SolidBrush(Color.FromArgb(35, Palette.Accent)))
+            using (var fill = new SolidBrush(Palette.PillActive))
             using (var path = AppleDrawing.Rounded(new RectangleF(3, 1, e.Item.Width - 6, e.Item.Height - 2), 6))
                 e.Graphics.FillPath(fill, path);
         }

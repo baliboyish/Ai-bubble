@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -318,80 +319,153 @@ namespace MuseBubbleWin
     public class PanelForm : Form
     {
         readonly BubbleForm owner2;
-        readonly Label title=new Label();
-        readonly List<ProviderTile> buttons=new List<ProviderTile>();
-        protected override bool ShowWithoutActivation{get{return true;}}
-        protected override CreateParams CreateParams{get{var cp=base.CreateParams;cp.ExStyle|=0x08000000;return cp;}}
+        readonly List<ProviderTile> buttons = new List<ProviderTile>();
+        ApplePalette palette;
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var parameters = base.CreateParams;
+                parameters.ExStyle |= 0x08000000;
+                return parameters;
+            }
+        }
+
         public PanelForm(BubbleForm owner)
         {
-            owner2=owner;FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;
-            StartPosition=FormStartPosition.Manual;AutoScaleMode=AutoScaleMode.Dpi;AutoScaleDimensions=new SizeF(96,96);
-            Size=new Size(302,126);Text="Choose assistant";title.Text="AI Suite";
-            title.Font=new Font(Ui.FontName,10,FontStyle.Bold);title.SetBounds(14,10,240,24);Controls.Add(title);
-            int x=10;
-            foreach(var p in Provider.All){Provider captured=p;var button=new ProviderTile(p);
-                button.SetBounds(x,42,90,70);button.AccessibleName="Open "+p.Name;
-                button.Click+=delegate {owner2.SelectProvider(captured.Id);};button.Tag=p;
-                Controls.Add(button);buttons.Add(button);x+=96;}
+            owner2 = owner;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            AutoScaleDimensions = new SizeF(96, 96);
+            ClientSize = new Size(192, 134);
+            Padding = new Padding(8);
+            Text = "Choose assistant";
+            DoubleBuffered = true;
+            int y = Padding.Top;
+            foreach (var provider in Provider.All)
+            {
+                var button = new ProviderTile(provider);
+                button.SetBounds(Padding.Left, y, 176, 36);
+                button.Click += delegate { owner2.SelectProvider(button.Provider.Id); };
+                Controls.Add(button);
+                buttons.Add(button);
+                y += 41;
+            }
             ApplyTheme();
         }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            AppleDrawing.RoundWindow(this, owner2.Light);
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            if (IsHandleCreated) AppleDrawing.RoundWindow(this, owner2.Light);
+        }
+
         public void ApplyTheme()
         {
-            var palette=new ApplePalette(owner2.Light);BackColor=palette.Surface;title.ForeColor=palette.Ink;
-            foreach(var button in buttons){button.Light=owner2.Light;
-                button.Selected=((Provider)button.Tag).Id==owner2.Selected.Id;button.Invalidate();}
-            AppleDrawing.RoundWindow(this,owner2.Light);Invalidate();
+            palette = new ApplePalette(owner2.Light);
+            BackColor = palette.Surface;
+            foreach (var button in buttons)
+            {
+                button.Palette = palette;
+                button.Selected = button.Provider.Id == owner2.Selected.Id;
+                button.Invalidate();
+            }
+            AppleDrawing.RoundWindow(this, owner2.Light);
+            Invalidate();
         }
+
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);using(var pen=new Pen(owner2.Selected.Accent))
-            using(var path=AppleDrawing.Rounded(new RectangleF(.5f,.5f,Width-1,Height-1),16))e.Graphics.DrawPath(pen,path);
-        }
-    }
-    internal sealed class ProviderTile : Button
-    {
-        readonly Provider provider;
-        bool hovering;
-        internal bool Light, Selected;
-        internal ProviderTile(Provider provider)
-        {
-            this.provider=provider;Text=provider.Name;AccessibleName="Open "+provider.Name;
-            Cursor=Cursors.Hand;FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;
-            SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|
-                ControlStyles.AllPaintingInWmPaint|ControlStyles.Opaque,true);
-        }
-        protected override void OnMouseEnter(EventArgs e){hovering=true;Invalidate();base.OnMouseEnter(e);}
-        protected override void OnMouseLeave(EventArgs e){hovering=false;Invalidate();base.OnMouseLeave(e);}
-        protected override void OnGotFocus(EventArgs e){Invalidate();base.OnGotFocus(e);}
-        protected override void OnLostFocus(EventArgs e){Invalidate();base.OnLostFocus(e);}
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            var g=e.Graphics;var palette=new ApplePalette(Light);
-            g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(palette.Surface);
-            using(var path=AppleDrawing.Rounded(new RectangleF(1,1,Width-3,Height-3),12)) {
-                using(var fill=new SolidBrush(Color.FromArgb(Selected?55:hovering?35:18,provider.Accent)))g.FillPath(fill,path);
-                using(var pen=new Pen(Color.FromArgb(Selected||Focused?230:85,provider.Accent),Selected||Focused?1.5f:1f))g.DrawPath(pen,path);
-            }
-            float cx=Width/2f,cy=25;
-            if(provider.Id=="claude") {
-                using(var pen=new Pen(provider.Accent,2.6f)) {
-                    pen.StartCap=pen.EndCap=System.Drawing.Drawing2D.LineCap.Round;
-                    for(int i=0;i<12;i++){double a=i*Math.PI/6;
-                        g.DrawLine(pen,cx+(float)Math.Cos(a)*5,cy+(float)Math.Sin(a)*5,
-                            cx+(float)Math.Cos(a)*15,cy+(float)Math.Sin(a)*15);}
-                }
-            } else {
-                using(var font=new Font(Ui.FontName,provider.Id=="muse"?22:12,FontStyle.Bold))
-                using(var ink=new SolidBrush(provider.Accent))
-                using(var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center})
-                    g.DrawString(provider.Id=="muse"?"M":"GPT",font,ink,new RectangleF(0,5,Width,39),format);
-            }
-            using(var font=new Font(Ui.FontName,8.5f))
-            using(var ink=new SolidBrush(palette.Ink))
-            using(var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center})
-                g.DrawString(provider.Name,font,ink,new RectangleF(0,45,Width,22),format);
+            base.OnPaint(e);
+            if (Width < 4 || Height < 4) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var pen = new Pen(palette.Border))
+            using (var path = AppleDrawing.Rounded(new RectangleF(.5f, .5f, ClientSize.Width - 1, ClientSize.Height - 1),
+                14 * this.DeviceScale()))
+                e.Graphics.DrawPath(pen, path);
         }
     }
 
+    internal sealed class ProviderTile : Button
+    {
+        internal readonly Provider Provider;
+        internal ApplePalette Palette;
+        internal bool Selected;
+        bool hovering;
+
+        internal ProviderTile(Provider provider)
+        {
+            Provider = provider;
+            Text = provider.Name;
+            AccessibleName = "Open " + provider.Name;
+            Cursor = Cursors.Hand;
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            Font = new Font(Ui.FontName, 9f);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { hovering = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovering = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Palette.Surface);
+            if (Width < 3 || Height < 3) return;
+            float scale = Height / 36f;
+            using (var path = AppleDrawing.Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 8 * scale))
+            {
+                using (var fill = new SolidBrush(Selected ? Palette.PillActive :
+                    hovering ? Palette.PillHover : Color.Transparent)) g.FillPath(fill, path);
+                using (var pen = new Pen(Focused ? Palette.Accent : Palette.Border)) g.DrawPath(pen, path);
+            }
+
+            var state = g.Save();
+            g.TranslateTransform(20 * scale, Height / 2f);
+            g.ScaleTransform(scale, scale);
+            using (var pen = new Pen(Palette.Ink, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+            {
+                switch (Provider.Id)
+                {
+                    case "chatgpt":
+                        for (int i = 0; i < 6; i++)
+                        {
+                            g.DrawArc(pen, -3.5f, -8f, 7f, 9f, 177f, 236f);
+                            g.RotateTransform(60);
+                        }
+                        break;
+                    case "claude":
+                        for (int i = 0; i < 8; i++)
+                        {
+                            g.DrawLine(pen, 0, -2, 0, i % 2 == 0 ? -8 : -6);
+                            g.RotateTransform(45);
+                        }
+                        break;
+                    case "muse":
+                        g.DrawLines(pen, new[] { new Point(-7, 6), new Point(-7, -6), new Point(0, 1),
+                            new Point(7, -6), new Point(7, 6) });
+                        break;
+                }
+            }
+            g.Restore(state);
+            TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(36 * scale), 0,
+                Math.Max(0, Width - (int)(44 * scale)), Height), Palette.Ink,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+    }
 }

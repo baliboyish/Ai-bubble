@@ -136,8 +136,14 @@ public class BehaviorChecks
                 foreach(float scale in new[]{1f,1.25f,1.5f}) {
                     Size original=muse.Size;
                     muse.Scale(new SizeF(scale,scale));muse.PerformLayout();Application.DoEvents();
+                    Control[] segments=(Control[])Field(bar,"providerButtons");
+                    Control actions=(Control)Field(bar,"ThemeButton");
                     Control title=(Control)Field(bar,"Title");
-                    Check(title.Width>40,"title remains readable "+theme+" "+scale);
+                    Check(!title.Visible && segments.Length==3 &&
+                        Array.TrueForAll(segments, segment => segment.Visible && segment.Width>40 &&
+                            segment.Right<=actions.Left && bar.ClientRectangle.Contains(segment.Bounds)) &&
+                        segments[2].Text=="Muse" && (bool)Field(segments[2],"Selected"),
+                        "provider switcher remains visible with Muse selected "+theme+" "+scale);
                     Rectangle webBounds=muse.RectangleToClient(browser.Parent.RectangleToScreen(browser.Bounds));
                     Check(webBounds.Width>0 && webBounds.Top>=bar.Bottom && webBounds.Right<=muse.ClientSize.Width &&
                         webBounds.Bottom<=muse.ClientSize.Height,"browser remains inside resized frame "+theme+" "+scale);
