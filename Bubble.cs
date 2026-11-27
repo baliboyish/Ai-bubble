@@ -159,8 +159,9 @@ namespace MuseBubbleWin
             if(!chats.TryGetValue(provider.Id,out chat)||chat.IsDisposed) {
                 chat=new ChatForm(this,provider);chats[provider.Id]=chat;
                 var state=settings.Window(provider.Id);var work=Screen.FromControl(this).WorkingArea;
-                var bounds=state.Positioned?new Rectangle(state.X,state.Y,state.Width,state.Height)
-                    :new Rectangle(Left-state.Width-12,Top,state.Width,state.Height);
+                Size size = settings.ChatSize;
+                var bounds = state.Positioned ? new Rectangle(new Point(state.X, state.Y), size)
+                    : new Rectangle(new Point(Left - size.Width - 12, Top), size);
                 if(state.Positioned)work=Screen.FromRectangle(bounds).WorkingArea;
                 else if(bounds.Left<work.Left)bounds.X=Right+12;
                 chat.MinimumSize=new Size(Math.Min(360,work.Width),Math.Min(460,work.Height));
@@ -176,6 +177,12 @@ namespace MuseBubbleWin
             state.X=chat.Left;state.Y=chat.Top;state.Width=chat.Width;state.Height=chat.Height;
             state.Pinned=chat.TopMost;state.Positioned=true;Persist();
         }
+        internal void RememberChatSize(ChatForm chat)
+        {
+            if (chat.IsDisposed || chat.WindowState != FormWindowState.Normal) return;
+            settings.ChatSize = chat.Size;
+            RememberChat(chat);
+        }
         public void SelectProvider(string id)
         {settings.Selected=Provider.Find(id).Id;Render();RefreshTrayIcon();Persist();ShowChat();}
         public void ShowChat()
@@ -185,22 +192,22 @@ namespace MuseBubbleWin
             foreach(var item in chats.Values)if(item!=chat)item.Hide();
             if(!Visible)ShowBubble();
             PositionChat(chat);
-            Size desired=chat.Size;
             chat.Show();
             // Initial DPI scaling may change form bounds; anchor again using its final layout.
-            var work=Screen.FromControl(this).WorkingArea;
-            chat.MinimumSize=new Size(Math.Min(360,work.Width),Math.Min(460,work.Height));
-            chat.Size=desired;
             PositionChat(chat);
             chat.Activate();if(!previewMode)chat.InitWeb();RememberChat(chat);
         }
         void PositionChat(ChatForm chat)
         {
             var work=Screen.FromControl(this).WorkingArea;
-            int x=Left-chat.Width-8;
-            if(x<work.Left)x=Right+8;
-            int y=Top+(Height-chat.Height)/2;
-            chat.Bounds=WindowGeometry.Clamp(new Rectangle(x,y,chat.Width,chat.Height),work);
+            chat.MinimumSize = new Size(Math.Min(360, work.Width), Math.Min(460, work.Height));
+            Size size = settings.ChatSize;
+            size.Width = Math.Max(chat.MinimumSize.Width, Math.Min(size.Width, work.Width));
+            size.Height = Math.Max(chat.MinimumSize.Height, Math.Min(size.Height, work.Height));
+            int x = Left - size.Width - 8;
+            if (x < work.Left) x = Right + 8;
+            int y = Top + (Height - size.Height) / 2;
+            chat.Bounds = WindowGeometry.Clamp(new Rectangle(new Point(x, y), size), work);
         }
         public void HideChat(){foreach(var chat in chats.Values)chat.Hide();}
         bool AnyChatVisible(){foreach(var chat in chats.Values)if(chat.Visible&&!chat.IsDisposed)return true;return false;}
@@ -243,7 +250,7 @@ namespace MuseBubbleWin
         public void SetChatSize(int width,int height)
         {
             var chat=GetChat(Selected);var work=Screen.FromRectangle(chat.Bounds).WorkingArea;
-            chat.Bounds=WindowGeometry.Clamp(new Rectangle(chat.Location,new Size(width,height)),work);RememberChat(chat);
+            chat.Bounds=WindowGeometry.Clamp(new Rectangle(chat.Location,new Size(width,height)),work);RememberChatSize(chat);
         }
         public void ShowPanel()
         {

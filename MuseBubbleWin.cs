@@ -285,7 +285,7 @@ namespace MuseBubbleWin
             FormClosing += delegate(object sender, FormClosingEventArgs args) {
                 if (args.CloseReason == CloseReason.UserClosing) { args.Cancel = true; Hide(); }
             };
-            ResizeEnd += delegate { owner2.RememberChat(this); };
+            ResizeEnd += delegate { owner2.RememberChatSize(this); };
 
             VisibleChanged += delegate { if (Visible) ApplyRegion(); };
             SizeChanged += delegate { if (Visible) ApplyRegion(); };

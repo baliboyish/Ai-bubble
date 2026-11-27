@@ -90,7 +90,14 @@ public class BehaviorChecks
             Form same = (Form)chats["claude"];
             Check(!same.Visible, "resizing a hidden chat does not open it");
             Call(bubble, "ShowChat");
-            Check(same.Visible && same.Size == new Size(Math.Max(Math.Min(600,work.Width), same.MinimumSize.Width),Math.Min(720,work.Height)), "reopen retains resized window");
+            Size sharedSize = same.Size;
+            Call(bubble, "SelectProvider", "chatgpt");
+            Size gptSize = gpt.Size;
+            Call(bubble, "SelectProvider", "muse");
+            Size museSize = ((Form)chats["muse"]).Size;
+            Call(bubble, "SelectProvider", "claude");
+            Check(same.Visible && same.Size == new Size(Math.Max(Math.Min(600,work.Width), same.MinimumSize.Width),Math.Min(720,work.Height)) &&
+                gptSize == sharedSize && museSize == sharedSize, "reopened, cached and newly opened chats share the resized size");
             Call(bubble, "HideAll");
             Check(!gpt.Visible && !claude.Visible && !bubble.Visible, "hide all hides each assistant and bubble");
 

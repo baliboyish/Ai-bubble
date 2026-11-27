@@ -29,6 +29,7 @@ namespace MuseBubbleWin
         public double Opacity=1;
         public string Theme="dark",Selected="muse";
         public bool Hover=true;
+        public int ChatWidth, ChatHeight;
         public Dictionary<string,ChatState> Windows;
     }
     public sealed class Settings
@@ -38,6 +39,7 @@ namespace MuseBubbleWin
         public string Theme="dark",Selected="muse";
         public bool Hover=true;
         public Dictionary<string,ChatState> Windows=new Dictionary<string,ChatState>();
+        public Size ChatSize = new Size(440, 640);
         public readonly string Folder;
         public Settings():this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"AIBubbleWin")) {}
         public Settings(string folder) { Folder=folder; }
@@ -58,10 +60,10 @@ namespace MuseBubbleWin
                 Opacity=Double.IsNaN(d.Opacity)?1:Math.Max(.5,Math.Min(1,d.Opacity));
                 Theme=d.Theme=="light"?"light":"dark";Selected=Provider.Find(d.Selected).Id;
                 Hover=d.Hover;Windows=d.Windows??new Dictionary<string,ChatState>();
-                foreach(var p in Provider.All) {
-                    var s=Window(p.Id);
-                    s.Width=Math.Max(360,Math.Min(5000,s.Width));s.Height=Math.Max(460,Math.Min(5000,s.Height));
-                }
+                var legacy = Window(Selected);
+                ChatSize = new Size(
+                    Math.Max(360, Math.Min(5000, d.ChatWidth > 0 ? d.ChatWidth : legacy.Width)),
+                    Math.Max(460, Math.Min(5000, d.ChatHeight > 0 ? d.ChatHeight : legacy.Height)));
             } catch(Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
         }
         public void Save()
@@ -70,7 +72,7 @@ namespace MuseBubbleWin
                 Directory.CreateDirectory(Folder);
                 string file=Path.Combine(Folder,"settings.json"),tmp=file+".tmp";
                 var data=new SettingsData { X=X,Y=Y,Size=Size,Opacity=Opacity,Theme=Theme,
-                    Selected=Selected,Hover=Hover,Windows=Windows };
+                    Selected=Selected,Hover=Hover,Windows=Windows, ChatWidth=ChatSize.Width, ChatHeight=ChatSize.Height };
                 File.WriteAllText(tmp,new JavaScriptSerializer().Serialize(data));
                 if(File.Exists(file))File.Replace(tmp,file,null);else File.Move(tmp,file);
             } catch(Exception ex) { System.Diagnostics.Debug.WriteLine(ex.Message); }
