@@ -73,9 +73,10 @@ These are real screenshots supplied by the maintainer.
 | Hold left and drag | Move the bubble and any open chat together, without opening chat on release |
 | Hover over bubble | Show assistant picker |
 | Right click bubble/tray | Open settings |
-| Drag chat edge/corner | Resize chat |
+| Drag chat edge/corner | Set the shared size for all three chats |
 | Drag chat title bar | Move the chat and the bubble together |
-| Green dot | Open current page in your browser |
+| Provider tabs | Switch between ChatGPT, Claude and Muse |
+| Open in browser icon | Open current page in your browser |
 | Sun/moon | Switch frame theme |
 | Pin | Toggle keeping this assistant above other windows |
 | Mouse wheel on bubble | Resize bubble |
