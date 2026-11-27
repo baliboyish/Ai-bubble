@@ -442,34 +442,7 @@ namespace MuseBubbleWin
                 using (var pen = new Pen(Focused ? Palette.Accent : Palette.Border)) g.DrawPath(pen, path);
             }
 
-            var state = g.Save();
-            g.TranslateTransform(20 * scale, Height / 2f);
-            g.ScaleTransform(scale, scale);
-            using (var pen = new Pen(Palette.Ink, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
-            {
-                switch (Provider.Id)
-                {
-                    case "chatgpt":
-                        for (int i = 0; i < 6; i++)
-                        {
-                            g.DrawArc(pen, -3.5f, -8f, 7f, 9f, 177f, 236f);
-                            g.RotateTransform(60);
-                        }
-                        break;
-                    case "claude":
-                        for (int i = 0; i < 8; i++)
-                        {
-                            g.DrawLine(pen, 0, -2, 0, i % 2 == 0 ? -8 : -6);
-                            g.RotateTransform(45);
-                        }
-                        break;
-                    case "muse":
-                        g.DrawLines(pen, new[] { new Point(-7, 6), new Point(-7, -6), new Point(0, 1),
-                            new Point(7, -6), new Point(7, 6) });
-                        break;
-                }
-            }
-            g.Restore(state);
+            AppleDrawing.DrawProviderGlyph(g, Provider, Palette.Ink, 20 * scale, Height / 2f, scale);
             TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(36 * scale), 0,
                 Math.Max(0, Width - (int)(44 * scale)), Height), Palette.Ink,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);

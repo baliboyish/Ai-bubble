@@ -84,6 +84,38 @@ namespace MuseBubbleWin
             return bitmap;
         }
 
+        internal static void DrawProviderGlyph(Graphics g, Provider provider, Color ink, float x, float y, float scale)
+        {
+            var state = g.Save();
+            g.TranslateTransform(x, y);
+            g.ScaleTransform(scale, scale);
+            using (var pen = new Pen(ink, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+            {
+                switch (provider.Id)
+                {
+                    case "chatgpt":
+                        for (int i = 0; i < 6; i++)
+                        {
+                            g.DrawArc(pen, -3.5f, -8f, 7f, 9f, 177f, 236f);
+                            g.RotateTransform(60);
+                        }
+                        break;
+                    case "claude":
+                        for (int i = 0; i < 8; i++)
+                        {
+                            g.DrawLine(pen, 0, -2, 0, i % 2 == 0 ? -8 : -6);
+                            g.RotateTransform(45);
+                        }
+                        break;
+                    case "muse":
+                        g.DrawLines(pen, new[] { new Point(-7, 6), new Point(-7, -6), new Point(0, 1),
+                            new Point(7, -6), new Point(7, 6) });
+                        break;
+                }
+            }
+            g.Restore(state);
+        }
+
         internal static void RoundWindow(Form form, bool light)
         {
             if (!form.IsHandleCreated || form.Width < 2 || form.Height < 2) return;
@@ -131,7 +163,16 @@ namespace MuseBubbleWin
     {
         internal ApplePalette Palette = new ApplePalette(false);
         internal string Symbol;
+        internal Provider Provider;
+        internal bool ShowProviderName;
         internal bool Selected;
+        internal const TextFormatFlags ProviderTextFlags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix |
+            TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter;
+
+        internal int ProviderLabelWidth
+        {
+            get { return TextRenderer.MeasureText(Text, Font, Size.Empty, ProviderTextFlags).Width; }
+        }
         bool hover, pressed;
         internal AppleButton(string name, string symbol)
         {
@@ -172,11 +213,15 @@ namespace MuseBubbleWin
                 PaintSymbol(g, scale);
                 return;
             }
-            using (var ink = new SolidBrush(Palette.Ink))
-            using (var format = new StringFormat { Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter,
-                FormatFlags = StringFormatFlags.NoWrap })
-                g.DrawString(Text, Font, ink, new RectangleF(2, 0, Width - 4, Height), format);
+            float glyphScale = .84f * scale;
+            int iconSpan = (int)Math.Ceiling(17 * scale);
+            int textWidth = ShowProviderName ? ProviderLabelWidth : 0;
+            int left = (Width - (ShowProviderName ? iconSpan + textWidth : 0)) / 2;
+            float iconCenter = ShowProviderName ? left + 7 * scale : Width / 2f;
+            AppleDrawing.DrawProviderGlyph(g, Provider, Provider.Accent, iconCenter, Height / 2f, glyphScale);
+            if (ShowProviderName)
+                TextRenderer.DrawText(g, Text, Font, new Rectangle(left + iconSpan, 0, textWidth, Height),
+                    Palette.Ink, ProviderTextFlags);
         }
 
         void PaintSymbol(Graphics g, float scale)
@@ -261,10 +306,11 @@ namespace MuseBubbleWin
             for (int i = 0; i < Provider.All.Length; i++)
             {
                 Provider provider = Provider.All[i];
-                var button = new AppleButton(provider.Name, null) { Tag = provider.Id };
+                var button = new AppleButton(provider.Name, null) { Provider = provider };
                 button.Click += delegate { if (ProviderSelected != null) ProviderSelected(provider.Id); };
                 providerButtons[i] = button;
                 Controls.Add(button);
+                tips.SetToolTip(button, provider.Name);
             }
             actionButtons = new[] { ThemeButton, PinButton, FullButton, CloseButton };
             foreach (var button in actionButtons)
@@ -281,7 +327,7 @@ namespace MuseBubbleWin
         {
             foreach (var button in providerButtons)
             {
-                button.Selected = (string)button.Tag == id;
+                button.Selected = button.Provider.Id == id;
                 button.AccessibleDescription = button.Selected ? "Current provider" : null;
                 button.Invalidate();
             }
@@ -323,20 +369,32 @@ namespace MuseBubbleWin
         {
             base.OnLayout(e);
             if (actionButtons == null) return;
-            float scale = Height / 38f;
+            float scale = Math.Min(Height / 38f, Width / 360f);
             int edge = (int)Math.Round(8 * scale);
             int target = Math.Max(1, (int)Math.Round(28 * scale));
             int y = (Height - target) / 2;
             int right = Width - edge - target * actionButtons.Length;
             for (int i = 0; i < actionButtons.Length; i++)
                 actionButtons[i].SetBounds(right + i * target, y, target, target);
+            float tabScale = target / 28f;
+            int gap = Math.Max(1, (int)Math.Round(3 * tabScale));
+            int iconSpan = (int)Math.Ceiling(17 * tabScale);
+            int minPadding = (int)Math.Ceiling(4 * tabScale);
+            int available = right - edge - (int)Math.Round(10 * tabScale) - gap * (providerButtons.Length - 1);
+            int contentWidth = 0;
+            foreach (var button in providerButtons)
+                contentWidth += iconSpan + button.ProviderLabelWidth;
+            int padding = Math.Min((int)Math.Round(18 * tabScale),
+                (available - contentWidth) / providerButtons.Length);
+            bool showNames = padding >= minPadding;
             int left = edge;
-            int segment = Math.Max(0, Math.Min((int)Math.Round(62 * scale),
-                (right - 2 * edge) / providerButtons.Length));
             foreach (var button in providerButtons)
             {
-                button.SetBounds(left, y, segment, target);
-                left += segment;
+                int width = showNames ? iconSpan + button.ProviderLabelWidth + padding : target;
+                button.ShowProviderName = showNames;
+                button.SetBounds(left, y, width, target);
+                button.Invalidate();
+                left += width + gap;
             }
         }
         protected override void OnPaintBackground(PaintEventArgs e)

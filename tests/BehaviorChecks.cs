@@ -135,7 +135,7 @@ public class BehaviorChecks
             Control bar=(Control)Field(muse,"themeBar");
             Control browser=(Control)Field(muse,"web");
             ((Control)Field(muse,"loading")).Visible=false;
-            browser.Visible=true;muse.PerformLayout();
+            browser.Visible=true;muse.Size=muse.MinimumSize;muse.PerformLayout();
             string captures=Path.Combine(root,"verification");
             Directory.CreateDirectory(captures);
             foreach(string theme in new[]{"dark","light"}) {
@@ -147,7 +147,7 @@ public class BehaviorChecks
                     Control actions=(Control)Field(bar,"ThemeButton");
                     Control title=(Control)Field(bar,"Title");
                     Check(!title.Visible && segments.Length==3 &&
-                        Array.TrueForAll(segments, segment => segment.Visible && segment.Width>40 &&
+                        Array.TrueForAll(segments, segment => segment.Visible && (bool)Field(segment,"ShowProviderName") &&
                             segment.Right<=actions.Left && bar.ClientRectangle.Contains(segment.Bounds)) &&
                         segments[2].Text=="Muse" && (bool)Field(segments[2],"Selected"),
                         "provider switcher remains visible with Muse selected "+theme+" "+scale);
