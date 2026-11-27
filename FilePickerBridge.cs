@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -116,7 +115,7 @@ internal sealed class FilePickerBridge
                     wasTopMost = owner.TopMost;
                     restoreTopMost = true;
                     if (wasTopMost) owner.TopMost = false;
-                    files = await ChooseFilesAsync(multiple, directory);
+                    files = ChooseFiles(multiple, directory);
                 }
             }
             if (files == null || owner.IsDisposed)
@@ -243,49 +242,27 @@ internal sealed class FilePickerBridge
         }
     }
 
-    async Task<string[]> ChooseFilesAsync(bool multiple, bool directory)
-    {
-        try
-        {
-            var dialogOwner = new DialogOwner(owner.Handle);
-            var completion = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var thread = new Thread(() =>
-            {
-                try { completion.SetResult(ShowPicker(dialogOwner, multiple, directory, true)); }
-                catch (Exception ex) { completion.SetException(ex); }
-            }) { IsBackground = true };
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            return await completion.Task;
-        }
-        catch (Exception ex)
-        {
-            log("Modern file picker failed, trying classic picker: " + ex);
-        }
-        return owner.IsDisposed ? null : ChooseFiles(multiple, directory);
-    }
-
-    sealed class DialogOwner : IWin32Window
-    {
-        public IntPtr Handle { get; private set; }
-        internal DialogOwner(IntPtr handle) { Handle = handle; }
-    }
-
     string[] ChooseFiles(bool multiple, bool directory)
-    {
-        return ShowPicker(owner, multiple, directory, false);
-    }
-
-    string[] ShowPicker(IWin32Window dialogOwner, bool multiple, bool directory, bool modern)
     {
         if (directory)
         {
             using (var dialog = new FolderBrowserDialog())
             {
                 dialog.Description = "Choose a folder to attach";
-                return dialog.ShowDialog(dialogOwner) == DialogResult.OK ? new[] { dialog.SelectedPath } : null;
+                return dialog.ShowDialog(owner) == DialogResult.OK ? new[] { dialog.SelectedPath } : null;
             }
         }
+
+        try { return ShowFilePicker(multiple, true); }
+        catch (Exception ex)
+        {
+            log("Modern file picker failed, trying classic picker: " + ex);
+            return owner.IsDisposed ? null : ShowFilePicker(multiple, false);
+        }
+    }
+
+    string[] ShowFilePicker(bool multiple, bool modern)
+    {
         using (var dialog = new OpenFileDialog())
         {
             dialog.Title = "Attach files to " + providerName;
@@ -294,7 +271,7 @@ internal sealed class FilePickerBridge
             dialog.CheckFileExists = true;
             dialog.RestoreDirectory = true;
             dialog.AutoUpgradeEnabled = modern;
-            return dialog.ShowDialog(dialogOwner) == DialogResult.OK ? dialog.FileNames : null;
+            return dialog.ShowDialog(owner) == DialogResult.OK ? dialog.FileNames : null;
         }
     }
 }
